@@ -1,0 +1,13 @@
+POST https://api.runpod.ai/v2/oxeo96g2ohggnu/runsync HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{RUNPOD_TOKEN}}
+
+{
+  "input" : {
+    "prompt":"{{CONTEXT}}\nUSER: Whats your name? ❤️ ❤️ ❤️ ❤️ ❤️ \nASSISTANT:",
+    "sampling_params": {
+      "exponential_decay_length_penalty": "5, 10000",
+      "ban_emojis": true
+    }
+  }
+}

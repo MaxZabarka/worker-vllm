@@ -4,6 +4,8 @@ from huggingface_hub import snapshot_download
 # Get the hugging face token
 HUGGING_FACE_HUB_TOKEN = os.environ.get('HUGGING_FACE_HUB_TOKEN', None)
 MODEL_NAME = os.environ.get('MODEL_NAME')
+if not MODEL_NAME:
+    raise ValueError("MODEL_NAME is not defined")
 MODEL_REVISION = os.environ.get('MODEL_REVISION', "main")
 MODEL_BASE_PATH = os.environ.get('MODEL_BASE_PATH', '/runpod-volume/')
 
