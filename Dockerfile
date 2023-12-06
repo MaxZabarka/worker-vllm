@@ -27,12 +27,13 @@ RUN apt-get install git -y
 # Install fast api
 RUN pip install fastapi==0.99.1
 
-ENV bust_cach="123fdsfsdf"
-RUN git clone https://github.com/MaxZabarka/vllm
+# ENV bust_cach="123fdsfsdf"
+# RUN git clone https://github.com/MaxZabarka/vllm
 
-ENV PIP_DEFAULT_TIMEOUT=100
-RUN --mount=type=cache,target=/root/.cache/pip \
-  pip install -e vllm --verbose
+# ENV PIP_DEFAULT_TIMEOUT=100
+# RUN --mount=type=cache,target=/root/.cache/pip \
+#   pip install -e vllm --verbose
+RUN pip install vllm
  
 # Install Python dependencies (Worker Template)
 COPY builder/requirements.txt /requirements.txt

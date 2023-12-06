@@ -24,42 +24,14 @@ import os
 import torch
 
 
-class CustomMinLengthLogitsProcessor(LogitsProcessor):
-    def __init__(
-        self,
-        min_length: int,
-        eos_token_id: Union[int, List[int]],
-        input_ids_seq_length: int,
-    ):
-        if not isinstance(min_length, int) or min_length < 0:
-            raise ValueError(
-                f"`min_length` has to be a non-negative integer, but is {min_length}"
-            )
+class ProcessorCompatabilityLayer:
+    def __init__(self, logits_processor: LogitsProcessor):
+        self.logits_processor = logits_processor
 
-        if isinstance(eos_token_id, int):
-            eos_token_id = [eos_token_id]
-        if not all(isinstance(i, int) for i in eos_token_id) or any(
-            i < 0 for i in eos_token_id
-        ):
-            print(
-                f"`eos_token_id` has to be a list of positive integers, but is {eos_token_id}"
-            )
-
-        self.min_length = min_length + input_ids_seq_length
-        self.eos_token_id = eos_token_id
-
-    def __call__(
-        self, input_ids: torch.LongTensor, scores: torch.FloatTensor
-    ) -> torch.FloatTensor:
-        cur_len = input_ids.shape[-1]
-        print("cur_len, min_len", cur_len, self.min_length)
-        if cur_len < self.min_length:
-            print("cur_len less than min_length")
-            for i in self.eos_token_id:
-                print(self.eos_token_id)
-                scores[:, i] = -float("inf")
-        return scores
-
+    def __call__(self, input_ids: List[int], scores: torch.Tensor) -> torch.Tensor:
+        input_ids_tensor = torch.LongTensor(input_ids).to("cuda").view(1, -1)
+        scores = scores.view(1, -1)
+        return self.logits_processor(input_ids_tensor, scores).view(-1)
 
 # Prepare the model and tokenizer
 MODEL_NAME = os.environ.get("MODEL_NAME")
@@ -99,11 +71,25 @@ vocab = tokenizer.get_vocab()
 banned_token_ids = []
 for id in vocab.values():
     token = tokenizer.decode(id)
-    for char in ["(", ")", "*", '"', "[", "]", ":", ";", "\n", "\t", "\v", "\f", "\\", "\r"]:
+    for char in [
+        "(",
+        ")",
+        "*",
+        '"',
+        "[",
+        "]",
+        ":",
+        ";",
+        "\n",
+        "\t",
+        "\v",
+        "\f",
+        "\\",
+        "\r",
+    ]:
         if char in token:
             banned_token_ids.append([id])
             break
-
 
 
 def get_banned_emojis_list():
@@ -211,38 +197,41 @@ def get_sampling_params(sampling_params, input_ids_length):
     exponential_decay_length_penalty = sampling_params.get(
         "exponential_decay_length_penalty"
     )
-    logits_processor = LogitsProcessorList()
+    logits_processors = LogitsProcessorList()
     ban_emojis = validate_bool(sampling_params.get("ban_emojis"), False)
 
     if no_repeat_ngram_size is not None:
-        logits_processor.append(NoRepeatNGramLogitsProcessor(no_repeat_ngram_size))
+        logits_processors.append(NoRepeatNGramLogitsProcessor(no_repeat_ngram_size))
     if ban_non_speakable_tokens:
-        logits_processor.append(
+        logits_processors.append(
             NoBadWordsLogitsProcessor(banned_token_ids, tokenizer.eos_token_id)
         )
     if ban_emojis:
-        logits_processor.append(
+        logits_processors.append(
             NoBadWordsLogitsProcessor(
                 banned_first_emoji_tokens_list, tokenizer.eos_token_id
             )
         )
     if repetition_penalty is not None:
-        logits_processor.append(RepetitionPenaltyLogitsProcessor(repetition_penalty))
+        logits_processors.append(RepetitionPenaltyLogitsProcessor(repetition_penalty))
     if exponential_decay_length_penalty is not None:
         start_index = int(exponential_decay_length_penalty.split(",")[0])
         decay_factor = float(exponential_decay_length_penalty.split(",")[1])
-        logits_processor.append(
+        logits_processors.append(
             ExponentialDecayLengthPenalty(
                 (start_index, decay_factor), tokenizer.eos_token_id, input_ids_length
             )
         )
 
     if min_length is not None:
-        logits_processor.append(
+        logits_processors.append(
             MinNewTokensLengthLogitsProcessor(
                 input_ids_length, min_length, tokenizer.eos_token_id
             )
         )
+
+    logits_processors = [ProcessorCompatabilityLayer(p) for p in logits_processors]
+
     params = {
         "n": n,
         "best_of": best_of,
@@ -256,7 +245,7 @@ def get_sampling_params(sampling_params, input_ids_length):
         "ignore_eos": ignore_eos,
         "max_tokens": max_tokens,
         "logprobs": logprobs,
-        "logits_processor": logits_processor,
+        "logits_processors": logits_processors,
     }
 
     # Remove None values
